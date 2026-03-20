@@ -244,7 +244,7 @@ public class QueryResultPatientDownload extends CRCDAO implements IResultGenerat
 				} else {
 					item.setFilename(workDir + item.getFilename());
 				}
-				*/
+				 */
 			} catch (Exception e)
 			{
 
@@ -391,44 +391,46 @@ public class QueryResultPatientDownload extends CRCDAO implements IResultGenerat
 
 				//Update XML Value
 
-				DataType mdataType = new DataType();
+				if (resultXmlType != null) {
+					DataType mdataType = new DataType();
 
-				mdataType.setValue( p.getParent().toString());
-				mdataType.setColumn("DIRECTORY");
-				mdataType.setType("string");
-				resultXmlType.getData().add(mdataType);
+					mdataType.setValue( p.getParent().toString());
+					mdataType.setColumn("DIRECTORY");
+					mdataType.setType("string");
+					resultXmlType.getData().add(mdataType);
 
 
-				for(Iterator<DataType> i = resultXmlType.getData().iterator(); i.hasNext();) {
-					DataType name = i.next();
-					//Do Something
-					if (name.getColumn().equals("APPROVEDBY"))
-						i.remove();
+					for(Iterator<DataType> i = resultXmlType.getData().iterator(); i.hasNext();) {
+						DataType name = i.next();
+						//Do Something
+						if (name.getColumn().equals("APPROVEDBY"))
+							i.remove();
+					}
+
+
+					edu.harvard.i2b2.crc.datavo.i2b2result.ObjectFactory of2 = new edu.harvard.i2b2.crc.datavo.i2b2result.ObjectFactory();
+					edu.harvard.i2b2.crc.datavo.i2b2result.BodyType bodyType2 = new edu.harvard.i2b2.crc.datavo.i2b2result.BodyType();
+					bodyType2.getAny().add(of2.createResult(resultXmlType));
+					ResultEnvelopeType resultEnvelop2 = new ResultEnvelopeType();
+					resultEnvelop2.setBody(bodyType2);
+
+					JAXBUtil jaxbUtil2 = CRCJAXBUtil.getJAXBUtil();
+
+					StringWriter strWriter2 = new StringWriter();
+					jaxbUtil2.marshaller(of2.createI2B2ResultEnvelope(resultEnvelop2),
+							strWriter2);
+					//tm.begin();
+					IXmlResultDao xmlResultDao2 = sfDAOFactory.getXmlResultDao();
+					String xmlResult2 = strWriter2.toString();
+
+					xmlResultDao2.deleteQueryXmlResult(resultInstanceId);
+					xmlResultDao2.createQueryXmlResult(resultInstanceId, xmlResult2);
+
 				}
-
-
-				edu.harvard.i2b2.crc.datavo.i2b2result.ObjectFactory of2 = new edu.harvard.i2b2.crc.datavo.i2b2result.ObjectFactory();
-				edu.harvard.i2b2.crc.datavo.i2b2result.BodyType bodyType2 = new edu.harvard.i2b2.crc.datavo.i2b2result.BodyType();
-				bodyType2.getAny().add(of2.createResult(resultXmlType));
-				ResultEnvelopeType resultEnvelop2 = new ResultEnvelopeType();
-				resultEnvelop2.setBody(bodyType2);
-
-				JAXBUtil jaxbUtil2 = CRCJAXBUtil.getJAXBUtil();
-
-				StringWriter strWriter2 = new StringWriter();
-				jaxbUtil2.marshaller(of2.createI2B2ResultEnvelope(resultEnvelop2),
-						strWriter2);
-				//tm.begin();
-				IXmlResultDao xmlResultDao2 = sfDAOFactory.getXmlResultDao();
-				String xmlResult2 = strWriter2.toString();
-
-				xmlResultDao2.deleteQueryXmlResult(resultInstanceId);
-				xmlResultDao2.createQueryXmlResult(resultInstanceId, xmlResult2);
-
-
 
 				if (skipCSV == false) {
 					boolean async = true;
+
 
 					File file = new File(fileName);
 					file.getParentFile().mkdirs();
@@ -545,20 +547,22 @@ public class QueryResultPatientDownload extends CRCDAO implements IResultGenerat
 				}
 			}
 
-			edu.harvard.i2b2.crc.datavo.i2b2result.ObjectFactory of = new edu.harvard.i2b2.crc.datavo.i2b2result.ObjectFactory();
-			BodyType bodyType = new BodyType();
-			bodyType.getAny().add(of.createResult(resultXmlType));
-			ResultEnvelopeType resultEnvelop = new ResultEnvelopeType();
-			resultEnvelop.setBody(bodyType);
+			if (resultXmlType != null) {
+				edu.harvard.i2b2.crc.datavo.i2b2result.ObjectFactory of = new edu.harvard.i2b2.crc.datavo.i2b2result.ObjectFactory();
+				BodyType bodyType = new BodyType();
+				bodyType.getAny().add(of.createResult(resultXmlType));
+				ResultEnvelopeType resultEnvelop = new ResultEnvelopeType();
+				resultEnvelop.setBody(bodyType);
 
-			//JAXBUtil jaxbUtil = CRCJAXBUtil.getJAXBUtil();
 
-			StringWriter strWriter = new StringWriter();
-			subLogTimingUtil.setStartTime();
-			jaxbUtil.marshaller(of.createI2B2ResultEnvelope(resultEnvelop),
-					strWriter);
-			subLogTimingUtil.setEndTime();
+				//JAXBUtil jaxbUtil = CRCJAXBUtil.getJAXBUtil();
 
+				StringWriter strWriter = new StringWriter();
+				subLogTimingUtil.setStartTime();
+				jaxbUtil.marshaller(of.createI2B2ResultEnvelope(resultEnvelop),
+						strWriter);
+				subLogTimingUtil.setEndTime();
+			}
 
 			if (processTimingFlag != null) {
 				if (!processTimingFlag.trim().equalsIgnoreCase(ProcessTimingReportUtil.NONE) ) {
