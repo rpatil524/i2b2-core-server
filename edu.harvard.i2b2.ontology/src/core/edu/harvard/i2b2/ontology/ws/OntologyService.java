@@ -1351,10 +1351,8 @@ public class OntologyService {
 
 		String requestElementString  =  query.toString();
 
-log.info("MM: Begin findDocuments");
 		GetNameInfoDataMessage nameInfoDataMsg = new GetNameInfoDataMessage(
 				requestElementString);
-		log.info("MM: Create JAXB");
 		long waitTime = 0;
 		if ((nameInfoDataMsg.getRequestMessageType() != null) && (nameInfoDataMsg.getRequestMessageType().getRequestHeader() != null)) {
 			waitTime = nameInfoDataMsg.getRequestMessageType()
@@ -1364,7 +1362,6 @@ log.info("MM: Begin findDocuments");
 		// do Ontology query processing inside thread, so that
 		// service could sends back message with timeout error.
 
-		log.info("MM: Going into SearchMetadataHandler");
 		return execute( new SearchMetadataHandler(nameInfoDataMsg), waitTime);
  
 		//return null; //results.toString();

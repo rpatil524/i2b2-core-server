@@ -11,10 +11,16 @@ package edu.harvard.i2b2.ontology.dao;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,6 +88,24 @@ public class CreateSearchMetadatalDao extends JdbcDaoSupport {
 			LuceneIndexer lucene = new LuceneIndexer();
 			String suggestIndexDirName =  System.getProperty("user.dir") + File.separatorChar + "standalone" + File.separatorChar + "lucene_index" + File.separatorChar + projectInfo.getId(); //orElseThrow(() -> new IllegalArgumentException("suggest index dir required"));
 			//String suggestIndexDirName = ".." + File.separatorChar + "standalone" + File.separatorChar + "lucene_index" + File.separatorChar + projectInfo.getId(); //orElseThrow(() -> new IllegalArgumentException("suggest index dir required"));
+
+			
+	        Path folderPath = Paths.get(suggestIndexDirName);
+
+	        // Check if the path exists AND if it is a directory
+	        if (Files.exists(folderPath) && Files.isDirectory(folderPath)) 
+	        {
+	        	LocalDateTime now = LocalDateTime.now();
+	        	DateTimeFormatter formatter = DateTimeFormatter.ofPattern("_MMddyyyy_HHmmss");
+	        	String formattedString = now.format(formatter); // e.g., "11-03-2026 15:15:00"
+	        	Path target = Paths.get(suggestIndexDirName + formattedString);
+
+	        	
+	        	 Files.move(folderPath, target, StandardCopyOption.REPLACE_EXISTING);
+	        	 
+	        //	throw new I2B2Exception("Error while creating lucene, folder already exists " + suggestIndexDirName);
+
+	        }
 			List<String> suggestIndexDumpPrefixes = Collections.emptyList();
 
 			Map<String, String> suggestIndexDumpNames = new LinkedHashMap<>();

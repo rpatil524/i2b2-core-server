@@ -501,19 +501,15 @@ public class ConceptDao extends JdbcDaoSupport {
 
 	public ConceptsType searchOntology(final VocabRequestType vocabType, String projectInfo) throws I2B2DAOException, I2B2Exception{
 
-		log.info("MM: Begin searchOntology");
 		SuggestQuery q = new SuggestQuery();
 		q.setSuggestString(vocabType.getMatchStr().getValue());
 		//ServiceResponse
 		
 		// LuceneService luceneService = new LuceneService(projectInfo);
 
-		log.info("MM: Get instance");
 		OntologyUtil a = OntologyUtil.getInstance();
-		log.info("MM: Get LuceneSuggester");
 		LuceneSuggester b = a.getLuceneSuggester(projectInfo);
-		log.info("MM: Get ConceptsType");
-		ConceptsType c = b.getSuggestions(q, projectInfo);
+		ConceptsType c = b.getSuggestions(q, projectInfo, vocabType);
 		
 		return c;
 		//return OntologyUtil.getInstance().getLuceneSuggester(projectInfo.getId()).getSuggestions(q, projectInfo.getId()); //search(query);

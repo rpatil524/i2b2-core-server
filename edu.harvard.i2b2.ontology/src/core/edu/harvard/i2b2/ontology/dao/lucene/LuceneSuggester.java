@@ -1,6 +1,8 @@
 package edu.harvard.i2b2.ontology.dao.lucene;
 
 
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.analyzing.AnalyzingInfixSuggester;
@@ -11,6 +13,7 @@ import edu.harvard.i2b2.ontology.dao.lucene.LuceneService.SuggestQuery;
 import edu.harvard.i2b2.ontology.datavo.pm.ProjectType;
 import edu.harvard.i2b2.ontology.datavo.vdo.ConceptType;
 import edu.harvard.i2b2.ontology.datavo.vdo.ConceptsType;
+import edu.harvard.i2b2.ontology.datavo.vdo.VocabRequestType;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,7 +43,7 @@ public final class LuceneSuggester {
 			suggestIndexDirectoryName =// "/Users/mem61/Downloads/lucene_i2b2/lucene_index"; //ConfigSource.config.getString("shrine.lucene.suggestDirectory");
 					System.getProperty("user.dir") + File.separatorChar + "standalone" + File.separatorChar + "lucene_index" + File.separatorChar + projectInfo; //orElseThrow(() -> new IllegalArgumentException("suggest index dir required"));
 
-			suggestionsReturnedCount = 100; // ConfigSource.config.getInt("shrine.lucene.suggestCount");
+			suggestionsReturnedCount = -1; // ConfigSource.config.getInt("shrine.lucene.suggestCount");
 			suggestIndexDirectory = new File(suggestIndexDirectoryName);
 			luceneDirectory = FSDirectory.open(suggestIndexDirectory.toPath());
 			analyzer = new StandardAnalyzer();
@@ -62,8 +65,9 @@ public final class LuceneSuggester {
 	 * Return an empty list if the input contains fewer than 3 non-blank characters
 	 * Note that if the input contains double-quotes, an empty list will also be returned
 	 * because double quotes are not indexed.
+	 * @param vocabType 
 	 */
-	public static ConceptsType getSuggestions(final SuggestQuery suggestQuery, String projectId ) {
+	public static ConceptsType getSuggestions(final SuggestQuery suggestQuery, String projectId, VocabRequestType vocabType ) {
 		if (suggestQuery == null) return null;
 
 		if (suggestIndexDirectoryName == null)
@@ -93,23 +97,42 @@ public final class LuceneSuggester {
 
 		List<Lookup.LookupResult> results;
 		try {
-			results = suggester.lookup(suggestString, contexts, suggestionsReturnedCount, true, true);
+			//if (vocabType.isReducedResults())
+			//	suggestString += "~|~|~|";
+			//results = suggester.lookup(suggestString, contexts, vocabType.getMax(), true, true);
+			results = suggester.lookup(suggestString, vocabType.getMax(), true, true);
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 
 		if (results == null || results.isEmpty()) return null;
 
-		final int limit = Math.min(results.size(), suggestionsReturnedCount);
+		//final int limit = Math.min(results.size(), suggestionsReturnedCount);
 		// List<AutoSuggestResult> suggestions = new ArrayList<>(limit);
 		ConceptsType suggestions = new  ConceptsType();
-		for (int i = 0; i < limit; i++) {
+		for (int i = 0; i < results.size(); i++) {
 
 			AutoSuggestResult a = AutoSuggestResult.fromLookup(results.get(i));
 
 
 			ConceptType b = new ConceptType();
-			b.setName(a.suggestion);
+			String[] suggestion = a.suggestion.split("~\\|");
+			if (vocabType.isReducedResults() && suggestion.length < 3)
+				continue;
+			
+			b.setName(suggestion[0]);
+			if (suggestion.length > 1)
+				b.setTablename(suggestion[1]);
+		
+			if (suggestion.length > 2 && StringUtils.isNumeric(suggestion[2]))
+				b.setTotalnum(Integer.valueOf(suggestion[2]));
+
+			if (suggestion.length > 3)
+				b.setBasecode(suggestion[3]);
+
+			
+			b.setLevel((int) a.occurrences);
+
 			suggestions.getConcept().add(b);
 			//suggestions.add(AutoSuggestResult.fromLookup(results.get(i)));
 		}

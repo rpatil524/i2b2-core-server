@@ -29,6 +29,7 @@ import edu.harvard.i2b2.ontology.dao.TermInfo;
 import edu.harvard.i2b2.ontology.dao.lucene.parser.OntologyFileParser.CloseableCsvToBean;
 import edu.harvard.i2b2.ontology.ejb.DBInfoType;
 import edu.harvard.i2b2.ontology.ejb.TableAccessType;
+import edu.harvard.i2b2.ontology.util.StringUtil;
 
 /**
  * Java translation of LuceneIndexer.scala. This keeps the same high-level
@@ -187,7 +188,7 @@ public final class LuceneIndexer {
 					if (suggestionIndexInfoOption.isPresent()) {
 
 						if (ontologyRow instanceof TermInfo)
-							suggestionIndexInfoOption.get().suggestionIndexer.generateSuggestionsFromConceptName(ontologyRow.getName()); //.toString());
+							suggestionIndexInfoOption.get().suggestionIndexer.generateSuggestionsFromConceptName(ontologyRow.getName(), 0); //.toString());
 					} else {
 						searchIndexInfoOption.get().searchIndexer.createAndAddDocument(ontologyRow);
 						if (numDataRead % 200000 == 0) {
@@ -248,9 +249,21 @@ public final class LuceneIndexer {
 			for (TableAccessType tableName : tableAccessType) {
 				logesapi.info("Parsing ontology file: " + tableName.getFullName());
 
+				String category = "";
+				if(dbInfo.getDb_serverType().toUpperCase().equals("SQLSERVER")){
+					category = StringUtil.escapeSQLSERVER(tableName.getFullName());
+				}
+				else if(dbInfo.getDb_serverType().toUpperCase().equals("ORACLE")){
+					category = StringUtil.escapeORACLE(tableName.getFullName());
+				}
+				else if(dbInfo.getDb_serverType().toUpperCase().equals("POSTGRESQL")){
+					category = StringUtil.escapePOSTGRESQL(tableName.getFullName()); 
+				}		
+
+				
 				// Iterator<OntologyRow> it = closeableCsvToBean.csvToBean.iterator();
-				String stageSql = " select distinct C_NAME, C_TOTALNUM from "  
-						+ dbInfo.getDb_fullSchema() + tableName.getTableName() + " where c_visualattributes not like '_H%'";
+				String stageSql = " select distinct C_NAME, C_TOTALNUM, C_BASECODE, C_FULLNAME from "  
+						+ dbInfo.getDb_fullSchema() + tableName.getTableName() + " where c_visualattributes not like '_H%' and c_fullname like '" + category + "%'";
 
 
 				query = conn.prepareStatement(stageSql);
@@ -259,8 +272,19 @@ public final class LuceneIndexer {
 				while (resultSet.next()) {
 
 
-					suggestionIndexInfoOption.suggestionIndexer.generateSuggestionsFromConceptName(resultSet.getString("C_NAME") + " (" + resultSet.getString("C_TOTALNUM") + ") - " + tableName.getName()) ; //.toString());
 
+
+					String sqlResult = resultSet.getString("C_NAME") + "~|" + tableName.getTableCd()  + "~|" ;
+					//if (resultSet.getString("C_TOTALNUM") != null)
+						sqlResult +=  resultSet.getString("C_FULLNAME");
+
+					sqlResult += "~|";
+					if (resultSet.getString("C_BASECODE") != null) {
+
+						sqlResult += resultSet.getString("C_BASECODE") ; //.toString());
+					}		
+
+					suggestionIndexInfoOption.suggestionIndexer.generateSuggestionsFromConceptName(sqlResult,  resultSet.getInt("c_totalnum")) ; //.toString());
 
 					/*
                 	OntologyRow ontologyRow = new ontologyRow();
@@ -278,6 +302,7 @@ public final class LuceneIndexer {
 					 */
 					numDataRead++;
 					if (numDataRead % 200000 == 0) {
+						logesapi.info("Finished: " + numDataRead + " - " + sqlResult);
 						logesapi.debug("Read " + numDataRead + " docs");
 						long endTime = System.currentTimeMillis();
 						long elapsedSeconds = (endTime - startTime) / 1000;
@@ -302,7 +327,7 @@ public final class LuceneIndexer {
 
 
 			conn.close();
-			
+
 		}
 		long endTime = System.currentTimeMillis();
 		long elapsedSeconds = (endTime - startTime) / 1000;

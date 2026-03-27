@@ -23,221 +23,236 @@ import org.apache.lucene.util.BytesRef;
  */
 public class SuggestionIndexer {
 
-    // Recreate the stop words list used in the Scala version
-    public static final CharArraySet STOP_WORDS;
+	// Recreate the stop words list used in the Scala version
+	public static final CharArraySet STOP_WORDS;
 
 	protected final static Log logesapi = LogFactory.getLog("SuggestionIndexer");
-	
-    static {
-        Set<String> stop = new HashSet<>(Arrays.asList(
-                "a", "an", "and", "are", "as", "at", "be", "but", "by",
-                "for", "if", "in", "into", "is", "it",
-                "no", "not", "of", "on", "or", "such",
-                "that", "the", "their", "then", "there", "these",
-                "they", "this", "to", "was", "will", "with"
-        ));
-        STOP_WORDS = new CharArraySet(stop, true);
-    }
 
-    private final int maxWordsInSuggestion;
-    private final Directory suggestIndexDirectory;
-    private final String suggestOutputDirName;
-    private final String suggestOutputZipFileName;
-    private final boolean verbose;
-    private final Map<String, File> suggestIndexDumpFilesMap;
+	static {
+		Set<String> stop = new HashSet<>(Arrays.asList(
+				"a", "an", "and", "are", "as", "at", "be", "but", "by",
+				"for", "if", "in", "into", "is", "it",
+				"no", "not", "of", "on", "or", "such",
+				"that", "the", "their", "then", "there", "these",
+				"they", "this", "to", "was", "will", "with"
+				));
+		STOP_WORDS = new CharArraySet(stop, true);
+	}
 
-    // suggestion -> occurrences
-    private final Map<String, Integer> suggestionToOccurrencesMap = new HashMap<>();
+	private final int maxWordsInSuggestion;
+	private final Directory suggestIndexDirectory;
+	private final String suggestOutputDirName;
+	private final String suggestOutputZipFileName;
+	private final boolean verbose;
+	private final Map<String, File> suggestIndexDumpFilesMap;
 
-    // prefix -> (suggestion -> occurrences)
-    private final Map<String, Map<String, Integer>> suggestionToOccurrencesMapsForCsv = new LinkedHashMap<>();
+	// suggestion -> occurrences
+	private final Map<String, Integer> suggestionToOccurrencesMap = new HashMap<>();
 
-    private final StandardAnalyzer conceptNameAnalyzer = new StandardAnalyzer(STOP_WORDS);
+	// prefix -> (suggestion -> occurrences)
+	private final Map<String, Map<String, Integer>> suggestionToOccurrencesMapsForCsv = new LinkedHashMap<>();
 
-    public SuggestionIndexer(int maxWordsInSuggestion,
-                             Directory suggestIndexDirectory,
-                             String suggestOutputDirName,
-                             String suggestOutputZipFileName,
-                             boolean verbose,
-                             Map<String, File> suggestIndexDumpFilesMap) {
-        this.maxWordsInSuggestion = maxWordsInSuggestion;
-        this.suggestIndexDirectory = suggestIndexDirectory;
-        this.suggestOutputDirName = suggestOutputDirName;
-        this.suggestOutputZipFileName = suggestOutputZipFileName;
-        this.verbose = verbose;
-        this.suggestIndexDumpFilesMap = suggestIndexDumpFilesMap == null ? Collections.emptyMap() : suggestIndexDumpFilesMap;
+	private final StandardAnalyzer conceptNameAnalyzer = new StandardAnalyzer(STOP_WORDS);
 
-        for (String prefix : this.suggestIndexDumpFilesMap.keySet()) {
-            this.suggestionToOccurrencesMapsForCsv.put(prefix, new HashMap<>());
-        }
-    }
+	public SuggestionIndexer(int maxWordsInSuggestion,
+			Directory suggestIndexDirectory,
+			String suggestOutputDirName,
+			String suggestOutputZipFileName,
+			boolean verbose,
+			Map<String, File> suggestIndexDumpFilesMap) {
+		this.maxWordsInSuggestion = maxWordsInSuggestion;
+		this.suggestIndexDirectory = suggestIndexDirectory;
+		this.suggestOutputDirName = suggestOutputDirName;
+		this.suggestOutputZipFileName = suggestOutputZipFileName;
+		this.verbose = verbose;
+		this.suggestIndexDumpFilesMap = suggestIndexDumpFilesMap == null ? Collections.emptyMap() : suggestIndexDumpFilesMap;
 
-    /**
-     * Tokenize a concept name (removing stop words), generate 1..maxWordsInSuggestion
-     * ordered combinations and tally them.
-     */
-    public void generateSuggestionsFromConceptName(String conceptName) {
-        try {
-            org.apache.lucene.analysis.TokenStream suggestTokenStream = conceptNameAnalyzer.tokenStream(null, conceptName);
-            CharTermAttribute cattr = suggestTokenStream.addAttribute(CharTermAttribute.class);
-            suggestTokenStream.reset();
+		for (String prefix : this.suggestIndexDumpFilesMap.keySet()) {
+			this.suggestionToOccurrencesMapsForCsv.put(prefix, new HashMap<>());
+		}
+	}
 
-            // Use a sorted set of words (alphabetical) like the Scala MutableSortedSet
-            SortedSet<String> wordsInConceptName = new TreeSet<>();
-            while (suggestTokenStream.incrementToken()) {
-                String word = cattr.toString();
-                wordsInConceptName.add(word);
-            }
+	/**
+	 * Tokenize a concept name (removing stop words), generate 1..maxWordsInSuggestion
+	 * ordered combinations and tally them.
+	 * @param totalNum 
+	 */
+	public void generateSuggestionsFromConceptName(String conceptName, int totalNum) {
+		try {
+			String[] suggestion = conceptName.split("~\\|");
 
-            if (verbose) logesapi.info("----------------- updated <word-combinations> -> <occurrences> based on the concept name tokens " + wordsInConceptName + ":");
+			org.apache.lucene.analysis.TokenStream suggestTokenStream = conceptNameAnalyzer.tokenStream(null, suggestion[0]);
+			CharTermAttribute cattr = suggestTokenStream.addAttribute(CharTermAttribute.class);
+			suggestTokenStream.reset();
 
-            
-            String[] wordsInNameArr = wordsInConceptName.toArray(new String[0]);
-            int l = wordsInNameArr.length;
-            for (int i1 = 0; i1 < l; i1++) {
-                String w1 = wordsInNameArr[i1];
-                tallySuggestion(Collections.singletonList(w1));
-                if (maxWordsInSuggestion > 1) {
-                    for (int i2 = i1 + 1; i2 < l; i2++) {
-                        String w2 = wordsInNameArr[i2];
-                        tallySuggestion(Arrays.asList(w1, w2));
-                        if (maxWordsInSuggestion > 2) {
-                            for (int i3 = i2 + 1; i3 < l; i3++) {
-                                String w3 = wordsInNameArr[i3];
-                                tallySuggestion(Arrays.asList(w1, w2, w3));
-                            }
-                        }
-                    }
-                }
-            }
-            
 
-            suggestTokenStream.end();
-            suggestTokenStream.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
+			// Use the whole concept Name
+			tallySuggestion(Arrays.asList(conceptName), totalNum);
 
-    private void tallySuggestion(List<String> suggestionWords) {
-        String suggestion = String.join(" ", suggestionWords);
-        suggestionToOccurrencesMap.merge(suggestion, 1, Integer::sum);
-        if (verbose) logesapi.info(suggestion + " -> " + suggestionToOccurrencesMap.get(suggestion));
 
-        if (!suggestIndexDumpFilesMap.isEmpty()) {
-            for (String p : suggestionToOccurrencesMapsForCsv.keySet()) {
-                boolean prefixFound = false;
-                for (String w : suggestionWords) {
-                    if (w.startsWith(p)) prefixFound = true;
-                }
-                if (prefixFound) {
-                    Map<String, Integer> m = suggestionToOccurrencesMapsForCsv.get(p);
-                    m.merge(suggestion, 1, Integer::sum);
-                    if (verbose) logesapi.info("For CSV dump, prefix '" + p + "': " + suggestion + " -> " + m.get(suggestion));
-                }
-            }
-        }
-    }
+			// Use a sorted set of words (alphabetical) like the Scala MutableSortedSet
 
-    public void buildSuggestionIndex() throws IOException {
-        StandardAnalyzer analyzer = new StandardAnalyzer();
-        AnalyzingInfixSuggester suggester = new AnalyzingInfixSuggester(suggestIndexDirectory, analyzer, analyzer, 3, true);
+			SortedSet<String> wordsInConceptName = new TreeSet<>();
+			while (suggestTokenStream.incrementToken()) {
+				String word = cattr.toString();
+				wordsInConceptName.add(word);
+			}
 
-        try {
-            TreeMap<Integer, SortedSet<String>> occurrenceToSuggestionsMap = generateOccurrenceToSuggestionsMap();
+			if (verbose) logesapi.info("----------------- updated <word-combinations> -> <occurrences> based on the concept name tokens " + wordsInConceptName + ":");
 
-            logesapi.info("Ordering suggestions by weight");
-            generateOrderedByWeightSuggestionsMap(occurrenceToSuggestionsMap, suggester);
+			//if (!conceptName.contains("~|") ) {
+				String[] wordsInNameArr = wordsInConceptName.toArray(new String[0]);
+				int l = wordsInNameArr.length;
+				for (int i1 = 0; i1 < l; i1++) {
+					String w1 = wordsInNameArr[i1];
+					tallySuggestion(Collections.singletonList(w1),1);
+					if (maxWordsInSuggestion > 1) {
+						for (int i2 = i1 + 1; i2 < l; i2++) {
+							String w2 = wordsInNameArr[i2];
+							tallySuggestion(Arrays.asList(w1, w2),1);
+							if (maxWordsInSuggestion > 2) {
+								for (int i3 = i2 + 1; i3 < l; i3++) {
+									String w3 = wordsInNameArr[i3];
+									tallySuggestion(Arrays.asList(w1, w2, w3),1);
+								}
+							}
+						}
+					}
+				}
+			//}
 
-            occurrenceToSuggestionsMap.clear();
 
-            logesapi.error("Suggester word count: " + suggester.getCount());
+			suggestTokenStream.end();
+			suggestTokenStream.close();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
 
-            // Create CSV dump files for prefixes
-            for (String p : suggestIndexDumpFilesMap.keySet()) {
-                generateCSV(p, suggestIndexDumpFilesMap.get(p), suggestionToOccurrencesMapsForCsv.get(p));
-            }
+	private void tallySuggestion(List<String> suggestionWords, int totalNum) {
 
-            suggestionToOccurrencesMapsForCsv.clear();
-            suggester.close();
-        } finally {
-        }
-    }
+		String suggestion = String.join(" ", suggestionWords);
 
-    private static final Comparator<String> DESCENDING_ALPHABET_ORDERING = (a, b) -> b.compareTo(a);
+		if (verbose) logesapi.info(suggestion + " -> " + suggestionToOccurrencesMap.get(suggestion));
 
-    private TreeMap<Integer, SortedSet<String>> generateOccurrenceToSuggestionsMap() {
-        logesapi.debug("Generating the occurrence to suggestions map  from " + suggestionToOccurrencesMap.size() + " suggestions");
+		//if (!suggestionToOccurrencesMap.containsKey(suggestion))
+		suggestionToOccurrencesMap.merge(suggestion, totalNum, Integer::sum);
 
-        TreeMap<Integer, SortedSet<String>> occurrenceToSuggestionsMap = new TreeMap<>();
 
-        // suggestionKeys iteration
-        for (Map.Entry<String, Integer> e : new ArrayList<>(suggestionToOccurrencesMap.entrySet())) {
-            String suggestion = e.getKey();
-            int occurrences = e.getValue();
+		if (!suggestIndexDumpFilesMap.isEmpty()) {
+			for (String p : suggestionToOccurrencesMapsForCsv.keySet()) {
+				boolean prefixFound = false;
+				for (String w : suggestionWords) {
+					if (w.startsWith(p)) prefixFound = true;
+				}
+				if (prefixFound) {
+					Map<String, Integer> m = suggestionToOccurrencesMapsForCsv.get(p);
+					m.merge(suggestion, 1, Integer::sum);
+					if (verbose) logesapi.info("For CSV dump, prefix '" + p + "': " + suggestion + " -> " + m.get(suggestion));
+				}
+			}
+		}
+	}
 
-            occurrenceToSuggestionsMap.computeIfAbsent(occurrences, k -> new TreeSet<>(DESCENDING_ALPHABET_ORDERING)).add(suggestion);
+	public void buildSuggestionIndex() throws IOException {
+		StandardAnalyzer analyzer = new StandardAnalyzer();
+		AnalyzingInfixSuggester suggester = new AnalyzingInfixSuggester(suggestIndexDirectory, analyzer, analyzer, 3, true);
 
-            suggestionToOccurrencesMap.remove(suggestion);
-        }
+		try {
+			TreeMap<Integer, SortedSet<String>> occurrenceToSuggestionsMap = generateOccurrenceToSuggestionsMap();
 
-        suggestionToOccurrencesMap.clear();
+			logesapi.info("Ordering suggestions by weight");
+			generateOrderedByWeightSuggestionsMap(occurrenceToSuggestionsMap, suggester);
 
-        return occurrenceToSuggestionsMap;
-    }
+			occurrenceToSuggestionsMap.clear();
 
-    private void generateOrderedByWeightSuggestionsMap(TreeMap<Integer, SortedSet<String>> occurrenceToSuggestionsMap,
-                                                       AnalyzingInfixSuggester suggester) throws IOException {
-        int w = 0;
+			logesapi.error("Suggester word count: " + suggester.getCount());
 
-        if (verbose) {
-            logesapi.info("==============================================");
-            logesapi.info("Weighted suggestions:");
-            logesapi.info("weight (#occurrences) : suggestion");
-        }
+			// Create CSV dump files for prefixes
+			for (String p : suggestIndexDumpFilesMap.keySet()) {
+				generateCSV(p, suggestIndexDumpFilesMap.get(p), suggestionToOccurrencesMapsForCsv.get(p));
+			}
 
-        // iterate over occurrence keys in ascending order
-        for (Map.Entry<Integer, SortedSet<String>> entry : new ArrayList<>(occurrenceToSuggestionsMap.entrySet())) {
-            int occurrences = entry.getKey();
-            SortedSet<String> suggestions = entry.getValue();
+			suggestionToOccurrencesMapsForCsv.clear();
+			suggester.close();
+		} finally {
+		}
+	}
 
-            for (String s : suggestions) {
-                w += 1;
-                Set<BytesRef> contexts = new HashSet<>();
-                try {
-                    contexts.add(new BytesRef("all".getBytes("UTF8")));
-                    suggester.add(new BytesRef(s.getBytes("UTF8")), contexts, w, new BytesRef(String.valueOf(occurrences).getBytes("UTF8")));
-                    if (verbose) {
-                        logesapi.info(w + " (" + occurrences + ") : " + s);
-                    }
-                } catch (UnsupportedEncodingException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
+	private static final Comparator<String> DESCENDING_ALPHABET_ORDERING = (a, b) -> b.compareTo(a);
 
-        suggester.commit();
-        // do not close here; caller will close in finally
+	private TreeMap<Integer, SortedSet<String>> generateOccurrenceToSuggestionsMap() {
+		logesapi.debug("Generating the occurrence to suggestions map  from " + suggestionToOccurrencesMap.size() + " suggestions");
 
-        if (verbose) {
-            logesapi.info("==============================================");
-        }
-    }
+		TreeMap<Integer, SortedSet<String>> occurrenceToSuggestionsMap = new TreeMap<>();
 
-    private void generateCSV(String prefix, File suggestIndexDumpFile, Map<String, Integer> suggestionToOccurrencesMap) {
-        logesapi.info("Generating CSV dump of all suggestions that contain '" + prefix + "' and their number of occurrences (in " + suggestIndexDumpFile.getName() + ")");
+		// suggestionKeys iteration
+		for (Map.Entry<String, Integer> e : new ArrayList<>(suggestionToOccurrencesMap.entrySet())) {
+			String suggestion = e.getKey();
+			int occurrences = e.getValue();
 
-        try (CSVWriter csvWriter = new CSVWriter(new FileWriter(suggestIndexDumpFile))) {
-            // sort suggestions alphabetically
-            TreeMap<String, Integer> sortedSuggestions = new TreeMap<>(suggestionToOccurrencesMap);
-            for (Map.Entry<String, Integer> e : sortedSuggestions.entrySet()) {
-                String[] arr = new String[] { e.getKey(), e.getValue().toString() };
-                csvWriter.writeNext(arr);
-            }
-        } catch (IOException ioe) {
-            throw new RuntimeException(ioe);
-        }
+			occurrenceToSuggestionsMap.computeIfAbsent(occurrences, k -> new TreeSet<>(DESCENDING_ALPHABET_ORDERING)).add(suggestion);
 
-        logesapi.info("DONE Generating CSV dump of all suggestions matching prefix " + prefix + " and their number of occurrences (in " + suggestIndexDumpFile.getName() + ")");
-    }
+			suggestionToOccurrencesMap.remove(suggestion);
+		}
+
+		suggestionToOccurrencesMap.clear();
+
+		return occurrenceToSuggestionsMap;
+	}
+
+	private void generateOrderedByWeightSuggestionsMap(TreeMap<Integer, SortedSet<String>> occurrenceToSuggestionsMap,
+			AnalyzingInfixSuggester suggester) throws IOException {
+		int w = 0;
+
+		if (verbose) {
+			logesapi.info("==============================================");
+			logesapi.info("Weighted suggestions:");
+			logesapi.info("weight (#occurrences) : suggestion");
+		}
+
+		// iterate over occurrence keys in ascending order
+		for (Map.Entry<Integer, SortedSet<String>> entry : new ArrayList<>(occurrenceToSuggestionsMap.entrySet())) {
+			int occurrences = entry.getKey();
+			SortedSet<String> suggestions = entry.getValue();
+
+			for (String s : suggestions) {
+				w += 1;
+				Set<BytesRef> contexts = new HashSet<>();
+				try {
+					contexts.add(new BytesRef("all".getBytes("UTF8")));
+					suggester.add(new BytesRef(s.getBytes("UTF8")), contexts, w, new BytesRef(String.valueOf(occurrences).getBytes("UTF8")));
+					if (verbose) {
+						logesapi.info(w + " (" + occurrences + ") : " + s);
+					}
+				} catch (UnsupportedEncodingException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		}
+
+		suggester.commit();
+		// do not close here; caller will close in finally
+
+		if (verbose) {
+			logesapi.info("==============================================");
+		}
+	}
+
+	private void generateCSV(String prefix, File suggestIndexDumpFile, Map<String, Integer> suggestionToOccurrencesMap) {
+		logesapi.info("Generating CSV dump of all suggestions that contain '" + prefix + "' and their number of occurrences (in " + suggestIndexDumpFile.getName() + ")");
+
+		try (CSVWriter csvWriter = new CSVWriter(new FileWriter(suggestIndexDumpFile))) {
+			// sort suggestions alphabetically
+			TreeMap<String, Integer> sortedSuggestions = new TreeMap<>(suggestionToOccurrencesMap);
+			for (Map.Entry<String, Integer> e : sortedSuggestions.entrySet()) {
+				String[] arr = new String[] { e.getKey(), e.getValue().toString() };
+				csvWriter.writeNext(arr);
+			}
+		} catch (IOException ioe) {
+			throw new RuntimeException(ioe);
+		}
+
+		logesapi.info("DONE Generating CSV dump of all suggestions matching prefix " + prefix + " and their number of occurrences (in " + suggestIndexDumpFile.getName() + ")");
+	}
 }

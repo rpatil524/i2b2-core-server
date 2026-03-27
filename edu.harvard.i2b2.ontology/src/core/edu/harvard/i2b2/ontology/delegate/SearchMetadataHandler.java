@@ -59,9 +59,7 @@ public class SearchMetadataHandler extends RequestHandler {
 			// test case for bad user
 			//		nameInfoMsg.getMessageHeaderType().getSecurity().setUsername("aaaaaaa");
 			projectId = requestMsg.getMessageHeaderType().getProjectId();
-			log.info("MM: Getting roles");
 			//MM project = getRoleInfo(requestMsg.getMessageHeaderType());
-			log.info("MM: Done getting roles");
 
 		} catch (JAXBUtilException e) {
 			log.error("error setting up getNameInfoHandler");
@@ -70,7 +68,6 @@ public class SearchMetadataHandler extends RequestHandler {
 	}
 	@Override
 	public String execute() throws I2B2Exception {
-		log.info("MM: Being SearchMetadata");
 		// call ejb and pass input object
 		ConceptDao conceptDao = new ConceptDao();
 		//ConceptsType concepts = new ConceptsType();
