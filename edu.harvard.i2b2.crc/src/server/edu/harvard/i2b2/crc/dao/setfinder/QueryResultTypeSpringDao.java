@@ -153,16 +153,20 @@ IQueryResultTypeDao {
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public List<QtQueryResultType> getAllQueryResultType(List<String> roles) {
+	public List<QtQueryResultType> getAllQueryResultType(List<String> roles, String user_id, String group_id) {
 
 		List<QtQueryResultType> queryResultTypeList = null;
 		if (roles != null)
 		{
-			String sql = "select * from " + getDbSchemaName()
-			+ "qt_query_result_type where user_role_cd = '@' or user_role_cd is null or user_role_cd in (:roleCd) order by result_type_id";
+		//	String sql = "select * from " + getDbSchemaName()
+		//	+ "qt_query_result_type where user_role_cd = '@' or user_role_cd is null or user_role_cd in (:roleCd) order by result_type_id";
+
+				String sql = "select a.* from " + getDbSchemaName()
+				+ "qt_query_result_type a, " + getDbSchemaName() + "qt_breakdown_path b where (user_role_cd = '@' or user_role_cd is null or user_role_cd in (:roleCd)) and (b.user_id = '" + user_id + "' or b.user_id is null or b.user_id = '@') and (b.group_id = '" + group_id + "' or b.group_id is null or b.group_id = '@') and a.name = b.name order by result_type_id";
+
 			Map myRoles = Collections.singletonMap("roleCd", roles);
 			queryResultTypeList = namedParameterJdbcTemplate.query(sql,
-					myRoles ,
+					myRoles ,  
 					queryResultTypeMapper);
 		} else {
 			String sql = "select * from " + getDbSchemaName()

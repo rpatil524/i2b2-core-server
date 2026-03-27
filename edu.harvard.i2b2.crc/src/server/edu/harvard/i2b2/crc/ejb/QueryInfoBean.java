@@ -211,8 +211,9 @@ public class QueryInfoBean { //implements SessionBean {
 						dataSourceLookup.getDomainId(),  dblookup.getProjectPath().replace("/", "")
 						, dataSourceLookup.getOwnerId());
 				IQueryMasterDao queryMasterDao = sfDaoFactory.getQueryMasterDAO();
+				int newsize = fetchSize/dblookups.size();
 				masterList.addAll(queryMasterDao
-						.getQueryMasterByGroupId(dblookup.getProjectPath().replace("/", ""), fetchSize, masterTypeCd, includeQueryInstance, userRequestType.getShowDeleted(),  userRequestType.getConstrainByDate()));
+						.getQueryMasterByGroupId(dblookup.getProjectPath().replace("/", ""), newsize, masterTypeCd, includeQueryInstance, userRequestType.getShowDeleted(),  userRequestType.getConstrainByDate()));
 
 			}
 
@@ -650,7 +651,7 @@ public class QueryInfoBean { //implements SessionBean {
 		IQueryResultTypeDao resultTypeDao = sfDaoFactory
 				.getQueryResultTypeDao();
 		List<QtQueryResultType> queryResultTypeList = resultTypeDao
-				.getAllQueryResultType(roles);
+				.getAllQueryResultType(roles, dataSourceLookup.getOwnerId(), dataSourceLookup.getProjectPath());
 
 		ResultTypeResponseType resultTypeResponseType = new ResultTypeResponseType();
 		List<QueryResultTypeType> returnQueryResultType = new ArrayList<QueryResultTypeType>();

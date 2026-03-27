@@ -47,7 +47,7 @@ public interface IQueryResultTypeDao {
 	 * 
 	 * @return List<QtQueryResultType>
 	 */
-	public List<QtQueryResultType> getAllQueryResultType(List<String> roles);
+	public List<QtQueryResultType> getAllQueryResultType(List<String> roles, String user_id, String group_id);
 
 	/**
 	 * Returns list of query master by user id
